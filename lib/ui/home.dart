@@ -42,11 +42,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   bool _didShowPackageUpdateToast = false, _didShowStorageMigrationToast = false;
   bool _checkingPendingSharedFile = false, _isDraggingRecentLTR = false;
   int _pendingSharedFileRetryCount = 0;
+  final ScrollController _scrollController = ScrollController();
+  bool _wasAtBottom = false;
+  double? _lastMaxScrollExtent;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _openPendingSharedFile();
       _maybeShowStorageMigrationNotice();
@@ -58,6 +62,32 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       unawaited(_openPendingSharedFile());
     }
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    _wasAtBottom = _scrollController.position.extentAfter <= 1;
+  }
+
+  bool _onScrollMetrics(ScrollMetricsNotification notification) {
+    if (notification.depth != 0) return false;
+    final newMax = notification.metrics.maxScrollExtent;
+    final previousMax = _lastMaxScrollExtent;
+    _lastMaxScrollExtent = newMax;
+    if (previousMax == null) return false;
+
+    final growth = newMax - previousMax;
+    if (growth < -0.5) {
+      _wasAtBottom = notification.metrics.extentAfter <= 1;
+      return false;
+    }
+    if (growth < 0.5 || !_wasAtBottom) return false;
+    final position = _scrollController.position;
+    final target = (position.pixels + growth)
+        .clamp(position.minScrollExtent, position.maxScrollExtent);
+    if ((target - position.pixels).abs() < 0.5) return false;
+    _scrollController.jumpTo(target);
+    return false;
   }
 
   Future<void> _openPendingSharedFile() async {
@@ -160,6 +190,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     createFileController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -736,7 +767,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               ),
             ],
           ),
-          body: SingleChildScrollView(
+          body: NotificationListener<ScrollMetricsNotification>(
+            onNotification: _onScrollMetrics,
+            child: SingleChildScrollView(
+            controller: _scrollController,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1830,6 +1864,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 ),
               ],
             ),
+          ),
           ),
         ));
       },
