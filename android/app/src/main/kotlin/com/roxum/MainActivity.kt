@@ -44,7 +44,10 @@ class MainActivity : FlutterActivity() {
     private val SYSTEM_UI_CHANNEL = "roxum/system_ui"
     private val PICK_DIR_REQUEST = 9001
 
-    private var immersiveNavigationEnabled = false
+    private var systemBarsConfigured = false
+    private var navigationBarMode = "overlay"
+    private var keepNavigationBarWithKeyboard = false
+    private var keyboardVisible = false
 
     private var pendingSafResult: MethodChannel.Result? = null
     private var pfdEventSink: EventChannel.EventSink? = null
@@ -77,39 +80,58 @@ class MainActivity : FlutterActivity() {
 
     override fun onPostResume() {
         super.onPostResume()
-        applyImmersiveNavigation()
+        applySystemBars()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) {
-            applyImmersiveNavigation()
+            applySystemBars()
         }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        applyImmersiveNavigation()
+        applySystemBars()
     }
 
     /**
-     * Keeps the status bar visible, preserves the edge-to-edge layout and
-     * upgrades the navigation bar to transient (sticky) immersive mode.
+     * Keeps the status bar visible and preserves the edge-to-edge layout.
+     * Overlay and push keep the navigation bar hidden until the user swipes it
+     * in from the bottom edge; push additionally reports its inset so the
+     * interface moves up while it is visible. Always leaves the bar on screen,
+     * and the keyboard option leaves it on screen while the user is typing.
      * WindowInsetsControllerCompat maps this to the platform controller on
      * Android 11+ and to the equivalent legacy flags on older versions.
      */
-    private fun applyImmersiveNavigation() {
-        if (!immersiveNavigationEnabled) return
+    @Suppress("DEPRECATION")
+    private fun applySystemBars() {
+        if (!systemBarsConfigured) return
 
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         controller.show(WindowInsetsCompat.Type.statusBars())
-        // Transient behavior reveals the bars only for an intentional swipe
-        // from the screen edge; ordinary content scrolls and taps stay in the
-        // app and must not bring the navigation bar back.
-        controller.systemBarsBehavior =
-            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        controller.hide(WindowInsetsCompat.Type.navigationBars())
+        controller.systemBarsBehavior = when (navigationBarMode) {
+            "always" -> WindowInsetsControllerCompat.BEHAVIOR_DEFAULT
+            "push" -> {
+                // The bar stays visible until the app hides it again, and the
+                // inset it reports lets the interface make room for it.
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_SWIPE
+            }
+            else -> {
+                // Transient behavior reveals the bar only for an intentional
+                // swipe from the screen edge; ordinary content scrolls and taps
+                // stay in the app and must not bring the navigation bar back.
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            }
+        }
+        val showNavigationBar = navigationBarMode == "always" ||
+            (keepNavigationBarWithKeyboard && keyboardVisible)
+        if (showNavigationBar) {
+            controller.show(WindowInsetsCompat.Type.navigationBars())
+        } else {
+            controller.hide(WindowInsetsCompat.Type.navigationBars())
+        }
     }
 
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
@@ -140,9 +162,31 @@ class MainActivity : FlutterActivity() {
             SYSTEM_UI_CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "enableImmersiveNavigation" -> {
-                    immersiveNavigationEnabled = true
-                    applyImmersiveNavigation()
+                "setNavigationBarMode" -> {
+                    systemBarsConfigured = true
+                    navigationBarMode =
+                        call.argument<String>("mode") ?: "overlay"
+                    keepNavigationBarWithKeyboard =
+                        call.argument<Boolean>("keepVisibleWithKeyboard") ?: false
+                    applySystemBars()
+                    result.success(null)
+                }
+                "setKeyboardVisible" -> {
+                    val visible = call.argument<Boolean>("visible") ?: false
+                    if (keyboardVisible != visible) {
+                        keyboardVisible = visible
+                        applySystemBars()
+                    }
+                    result.success(null)
+                }
+                "hideNavigationBar" -> {
+                    if (systemBarsConfigured &&
+                        navigationBarMode != "always" &&
+                        !(keepNavigationBarWithKeyboard && keyboardVisible)
+                    ) {
+                        WindowCompat.getInsetsController(window, window.decorView)
+                            .hide(WindowInsetsCompat.Type.navigationBars())
+                    }
                     result.success(null)
                 }
                 else -> result.notImplemented()
