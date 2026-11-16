@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:code_forge/code_forge.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,7 @@ import '../utils/functions.dart';
 import '../utils/languages.dart';
 import '../utils/themes.dart';
 import 'downloads.dart';
+import 'system_navigation_bar.dart';
 import 'widgets.dart';
 
 class Settings extends StatefulWidget {
@@ -1888,6 +1890,57 @@ int main() {
     }
   }
 
+  Future<void> _showNavigationBarModeDialog(
+    BuildContext context,
+    AppThemeState appThemeState,
+    ConfigState configState,
+  ) async {
+    final current = NavigationBarMode.fromName(
+      configState.codeForgeConfig['navBarMode'],
+    );
+    final selected = await showDialog<NavigationBarMode>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor:
+            appThemeState.appTheme.isDark ? const Color(0xff181A26) : null,
+        title: Text(
+          "Navigation bar",
+          style: TextStyle(
+            color: appThemeState.appTheme.selectScreenCardTextColor,
+            fontSize: 20,
+          ),
+        ),
+        content: RadioGroup<NavigationBarMode>(
+          groupValue: current,
+          onChanged: (value) => Navigator.of(dialogContext).pop(value),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final mode in NavigationBarMode.values)
+                RadioListTile<NavigationBarMode>(
+                  value: mode,
+                  title: Text(mode.label),
+                  activeColor: appThemeState.appTheme.isDark
+                      ? const Color(0xffb0c6fe)
+                      : const Color(0xff181a26),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected == null || selected == current) return;
+
+    final updatedConfig = Map<String, dynamic>.from(configState.codeForgeConfig)
+      ..['navBarMode'] = selected.name;
+    await _saveCodeForgeConfig(updatedConfig);
+    await SystemNavigationBar.configure(
+      selected,
+      keepVisibleWithKeyboard:
+          updatedConfig['navBarVisibleWithKeyboard'] == true,
+    );
+  }
+
   Future<String?> _showCustomEditorThemeDialog(
     BuildContext context,
     AppThemeState appThemeState,
@@ -2389,6 +2442,47 @@ int main() {
                           },
                         ),
                       ),
+                      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) ...[
+                        settingsTile(
+                          () => _showNavigationBarModeDialog(context, appThemeState, configState),
+                          "Navigation bar",
+                          Icon(Icons.vertical_align_top, color: appThemeState.appTheme.selectScreenCardTextColor, size: 19),
+                          appThemeState.appTheme.isDark,
+                          subTitle: NavigationBarMode.fromName(configState.codeForgeConfig['navBarMode']).label,
+                        ),
+                        if (NavigationBarMode.fromName(configState.codeForgeConfig['navBarMode']) != NavigationBarMode.always)
+                          settingsTile(
+                            null,
+                            "Navigation bar with keyboard",
+                            Icon(Icons.keyboard, color: appThemeState.appTheme.selectScreenCardTextColor, size: 19),
+                            appThemeState.appTheme.isDark,
+                            trailing: FlutterSwitch(
+                              borderRadius: 5,
+                              width: 65,
+                              height: 26,
+                              toggleSize: 32,
+                              toggleColor: Color(0xff007ACC),
+                              inactiveToggleColor: Colors.white,
+                              activeColor: appThemeState.appTheme.isDark ? Color(0xff303030) : Color(0xffb0c6fe),
+                              activeIcon: Text("On", style: TextStyle(color: Colors.white)),
+                              inactiveIcon: Text("Off", style: TextStyle(color: Colors.grey)),
+                              toggleShape: BoxShape.rectangle,
+                              toggleBorderRadius: .circular(4),
+                              padding: 2,
+                              value: configState.codeForgeConfig['navBarVisibleWithKeyboard'] == true,
+                              onToggle: (value) async {
+                                final currentMode = NavigationBarMode.fromName(configState.codeForgeConfig['navBarMode']);
+                                final updatedConfig = Map<String, dynamic>.from(configState.codeForgeConfig)
+                                  ..['navBarVisibleWithKeyboard'] = value;
+                                await _saveCodeForgeConfig(updatedConfig);
+                                await SystemNavigationBar.configure(
+                                  currentMode,
+                                  keepVisibleWithKeyboard: value,
+                                );
+                              },
+                            ),
+                          ),
+                      ],
                       settingsDivider,
                       settingsType("Appearance", appThemeState.appTheme.isDark),
                       settingsTile(

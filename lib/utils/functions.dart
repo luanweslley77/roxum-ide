@@ -1688,6 +1688,8 @@ Future<String> getCodeForgeConfig() async {
     "isAIEnabled": true,
     "manualCompletion": true,
     "autoSave": true,
+    "navBarMode": "overlay",
+    "navBarVisibleWithKeyboard": false,
     "enableLSP": true,
     "LSPFeatureToggle": {},
     "customEditorThemes": {},

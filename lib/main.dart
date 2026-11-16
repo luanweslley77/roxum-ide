@@ -8,6 +8,7 @@ import 'package:roxum/l10n/app_localizations.dart';
 import 'bloc/repo_bloc/repo_bloc.dart';
 import 'bloc/ui_bloc/ui_bloc.dart';
 import 'ui/start_screen.dart';
+import 'ui/system_navigation_bar.dart';
 import 'utils/functions.dart';
 import 'utils/themes.dart';
 import 'terminal/terminal.dart';
@@ -56,9 +57,6 @@ class MainApp extends StatefulWidget {
 }
 
 class _MainAppState extends State<MainApp> {
-  static const MethodChannel _systemUiChannel =
-      MethodChannel('roxum/system_ui');
-
   @override
   void initState() {
     super.initState();
@@ -68,12 +66,16 @@ class _MainAppState extends State<MainApp> {
   Future<void> _configureSystemUi() async {
     try {
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-        // Issue #49: keep the navigation bar hidden so it does not cover
-        // bottom UI, while keeping the status bar visible. Flutter's manual
-        // mode cannot express that combination with transient swipe behavior,
-        // so the native side owns the bars and the edge-to-edge layout.
-        await _systemUiChannel.invokeMethod<void>(
-          'enableImmersiveNavigation',
+        // Issue #49: keep the navigation bar out of the way while keeping the
+        // status bar visible. Flutter's manual mode cannot express that
+        // combination, so the native side owns the bars and the edge-to-edge
+        // layout.
+        final config = jsonDecode(widget.codeForgeConfig);
+        final mode = NavigationBarMode.fromName(config['navBarMode']);
+        await SystemNavigationBar.configure(
+          mode,
+          keepVisibleWithKeyboard:
+              config['navBarVisibleWithKeyboard'] == true,
         );
         return;
       }
@@ -158,9 +160,12 @@ class _MainAppState extends State<MainApp> {
 
             supportedLocales: AppLocalizations.supportedLocales,
             
-            home: SafeArea(
-              top: false,
-              child: const StartScreen()
+            home: const StartScreen(),
+            builder: (context, child) => SystemNavigationBarInset(
+              child: SafeArea(
+                top: false,
+                child: child ?? const SizedBox.shrink(),
+              ),
             ),
           );
         },
