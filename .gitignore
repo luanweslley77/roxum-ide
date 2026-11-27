@@ -3,7 +3,9 @@
 /windows
 /web
 /linux
-/test
+# Local debugging tests stay out of version control; portable tests are kept.
+/test/local/
+/test/failures/
 
 # Miscellaneous
 *.class
